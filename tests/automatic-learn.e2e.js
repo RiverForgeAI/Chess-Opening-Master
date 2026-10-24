@@ -18,7 +18,7 @@ test('Learn auto-opens the current explanation after e4 e5, and Practice/Mastery
   const panel = page.locator('#teaching-panel');
   await expect(panel).toHaveClass(/expanded/);
   await expect(panel).toContainText('Nf3');
-  await expect(panel).toContainText('Nf3 develops the king knight');
+  await expect(panel).toContainText('Nf3 develops toward the centre');
   const arrow = page.locator('.board-overlay svg line');
   await expect(arrow).toHaveCount(1);
   await expect(arrow).toHaveAttribute('x1', '81.25');
@@ -40,4 +40,28 @@ test('Learn auto-opens the current explanation after e4 e5, and Practice/Mastery
     await expect(page.locator('#board [data-square="e2"]')).not.toHaveClass(/recommended-piece/);
     await expect(page.locator('.board-overlay svg line')).toHaveCount(0);
   }
+});
+
+test('10-move Learn keeps showing teaching text after the fifth White move', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('[data-profile="dad"]').click();
+  await page.locator('[data-opening="italian"]').click();
+  await page.locator('[data-depth="10"]').click();
+  await page.locator('[data-mode="learn"]').click();
+
+  for (const [from, to] of [
+    ['e2', 'e4'],
+    ['g1', 'f3'],
+    ['f1', 'c4'],
+    ['c2', 'c3'],
+    ['d2', 'd3']
+  ]) {
+    await page.locator(`#board [data-square="${from}"]`).click();
+    await page.locator(`#board [data-square="${to}"]`).click();
+    await page.waitForTimeout(750);
+  }
+
+  const feedback = page.locator('#feedback');
+  await expect(feedback).toContainText('Castling gets the king safe');
+  await expect(feedback).not.toContainText(/undefined|null/i);
 });

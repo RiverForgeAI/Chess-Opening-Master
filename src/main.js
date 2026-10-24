@@ -71,12 +71,7 @@ function kittenSvg(stateName = 'welcome') {
 }
 
 function explanationFor(moveIndex) {
-  if (state.profile === 'daughter') {
-    const simple = ['Put your pawn in the middle and make room for your pieces.', 'Bring a piece toward the busy centre.', 'Develop your bishop to a useful square.', 'Make your centre strong and ready.', 'Keep your king safe and finish the opening.'];
-    return simple[moveIndex];
-  }
-  if (state.profile === 'son') return state.opening.movesDetail[moveIndex];
-  return state.opening.movesDetail[moveIndex] + ` This supports the central and developmental plan.`;
+  return teachingFor(state.opening, state.session.sequence, moveIndex, state.profile).explanation;
 }
 
 function training() {

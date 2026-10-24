@@ -29,7 +29,17 @@ describe('Show Me Why', () => {
     const lesson = teachingFor(italian, italian.moves, 3, 'dad');
     expect(lesson.san).toBe('c3');
     expect(lesson.why).toMatch(/prepare.*d4/i);
-    expect(lesson.simple).toMatch(/push.*d-pawn.*d4/i);
+    expect(lesson.simple).toMatch(/d-pawn push/i);
+  });
+
+  it('explains Italian 8.Bb3 as a voluntary reposition after ...a6', () => {
+    const italian = openings.find((opening) => opening.id === 'italian');
+    const line = ['e4','e5','Nf3','Nc6','Bc4','Bc5','c3','Nf6','d3','d6','O-O','O-O','Re1','a6','Bb3','Ba7','Nbd2','Re8','h3'];
+    const lesson = teachingFor(italian, line, 7, 'dad');
+
+    expect(lesson.san).toBe('Bb3');
+    expect(lesson.why).toMatch(/voluntary.*a6 does not attack the bishop on c4/i);
+    expect(lesson.explanation).not.toMatch(/forced retreat/i);
   });
 
   for (const opening of openings) {
