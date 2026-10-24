@@ -1,0 +1,21 @@
+{
+  "name": "chess-opening-master",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "vitest run && playwright test",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "chess.js": "1.4.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "vite": "7.1.5",
+    "vitest": "3.2.4"
+  }
+}
