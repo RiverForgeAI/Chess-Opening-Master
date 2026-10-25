@@ -1,8 +1,10 @@
 import './styles.css';
+import './strategy.css';
 import './enhancements.css';
 import './refinement.css';
+import './board-ux.css';
 import { Chess } from 'chess.js';
-import { openings, openingById } from './openings.js';
+import { openings, openingById, openingStrategy } from './openings.js';
 import { profiles } from './profiles.js';
 import { ChessBoard, recommendedMoveForMode } from './board.js';
 import { TrainingSession } from './training.js';
@@ -10,9 +12,13 @@ import { LessonDisclosure } from './lesson-disclosure.js';
 import { loadProgress, recordCompletion, recordMistake, loadTheme } from './storage.js';
 import { movesForDepth, supportedDepths } from './openingDepths.js';
 import { teachingFor } from './teaching.js';
+import { strategyAnalysisFor } from './strategy-analysis.js';
 
 const app = document.querySelector('#app');
-let state = { profile: null, view: 'welcome', opening: null, mode: null, depth: 5, session: null, board: null, chess: new Chess(), busy: false, assisted: false, teachingOpen: false, lessonDisclosure: new LessonDisclosure() };
+let state = { profile: null, view: 'welcome', opening: null, mode: null, depth: 5, strategyDepth: 5, strategySection: 0, session: null, board: null, chess: new Chess(), busy: false, assisted: false, teachingOpen: false, lessonDisclosure: new LessonDisclosure() };
+let strategySectionObserver = null;
+let strategyNavResizeObserver = null;
+let strategyLayoutResizeHandler = null;
 
 const html = (value) => value ?? '';
 const selectedExpected = () => state.session?.expectedMove;
@@ -29,6 +35,29 @@ function expectedSquare(san) {
 }
 function profileName(id = state.profile) { return profiles[id]?.title ?? ''; }
 function openingName() { return state.opening?.name ?? ''; }
+
+function updateStrategyScrollLayout() {
+  const strategyPage = app.querySelector('.strategy-page');
+  const strategyNav = app.querySelector('.strategy-nav');
+  const lastHeading = app.querySelector('#strategy-section-H h3');
+  if (!strategyPage || !strategyNav || !lastHeading) return;
+
+  const navStyle = getComputedStyle(strategyNav);
+  const offset = navStyle.position === 'sticky'
+    ? strategyNav.getBoundingClientRect().height + (Number.parseFloat(navStyle.top) || 0) + 20
+    : 20;
+  strategyPage.style.setProperty('--strategy-heading-scroll-offset', `${offset}px`);
+
+  if (!lastHeading.getClientRects().length) return;
+  const scrollMargin = Number.parseFloat(getComputedStyle(lastHeading).scrollMarginTop) || 0;
+  const targetScrollY = lastHeading.getBoundingClientRect().top + window.scrollY - scrollMargin;
+  const maxScrollY = document.documentElement.scrollHeight - window.innerHeight;
+  const additionalSpace = Math.max(0, targetScrollY - maxScrollY);
+  if (additionalSpace > 0) {
+    const currentPadding = Number.parseFloat(getComputedStyle(strategyPage).paddingBottom) || 0;
+    strategyPage.style.paddingBottom = `${currentPadding + additionalSpace}px`;
+  }
+}
 
 function header() {
   return `<header class="topbar"><button class="brand" data-action="library">Chess Opening Master</button>${state.profile ? `<div class="top-actions"><span class="profile-chip">${profileName()}</span><button class="text-button" data-action="progress">Progress</button><button class="text-button" data-action="profile">Change profile</button></div>` : ''}</header>`;
@@ -55,8 +84,71 @@ function library() {
   const progress = loadProgress(state.profile);
   app.innerHTML = `<main class="page-shell">${header()}<section class="library-heading"><div><p class="eyebrow">Opening library</p><h1>Choose an opening</h1></div><div class="mode-summary">5 White moves · All profiles</div></section><div class="opening-grid">${openings.map(opening => {
     const record = progress.openings[`${opening.id}:10`] ?? progress.openings[`${opening.id}:5`];
-    return `<article class="opening-card"><div class="card-top"><span class="difficulty">${opening.difficulty}</span>${record?.mastery ? '<span class="mastered">Mastered</span>' : ''}</div><h2>${opening.name}</h2><p>${opening.description}</p><div class="objective"><span>Objective</span>${opening.objective}</div><button class="primary" data-opening="${opening.id}">Start training</button></article>`;
+    return `<article class="opening-card"><div class="card-top"><span class="difficulty">${opening.difficulty}</span>${record?.mastery ? '<span class="mastered">Mastered</span>' : ''}</div><h2>${opening.name}</h2><p>${opening.description}</p><div class="objective"><span>Objective</span>${opening.objective}</div><div class="opening-actions"><button class="secondary" data-action="strategy" data-strategy-opening="${opening.id}">Learn the Strategy</button><button class="primary" data-action="training" data-opening="${opening.id}">Start Training</button></div></article>`;
   }).join('')}</div></main>`;
+}
+
+function strategyLesson() {
+  const opening = state.opening;
+  const lesson = openingStrategy(opening, state.strategyDepth);
+  const moves = movesForDepth(opening, state.strategyDepth) ?? opening.moves;
+  const analysis = strategyAnalysisFor(opening, state.strategyDepth, moves);
+  const chess = new Chess(analysis.boardPosition);
+  const playedBlackMoves = moves.filter((_, index) => index % 2 === 1).join(' ');
+  const sections = [
+    { key: 'A', title: 'The Big Picture', text: lesson.bigPicture },
+    { key: 'B', title: 'Ideal Piece Development', text: `<p>${analysis.development}</p><p><strong>Position after White’s ${state.strategyDepth}th move:</strong> the board shows this exact repertoire position. Pieces still at home are candidates for improvement, not automatic moves.</p>` },
+    { key: 'C', title: 'Centre and Pawn Structure', text: `<p>${analysis.centreText}</p>` },
+    { key: 'D', title: 'Key Strategic Plans', text: analysis.plans.map((plan) => `<article class="strategy-plan"><h4>${plan.name}</h4><p><strong>Purpose:</strong> ${plan.purpose}</p><p><strong>Pieces:</strong> ${plan.pieces}</p><p><strong>Conditions:</strong> ${plan.conditions}</p><p><strong>Drawbacks:</strong> ${plan.drawbacks}</p></article>`).join('') },
+    { key: 'E', title: 'Black\'s Ideas and Counterplay', text: `<p><strong>Black moves in the displayed trained line:</strong> ${playedBlackMoves}.</p><p><strong>Black’s setup and ideas at this depth:</strong> ${analysis.blackText}</p><p class="strategy-summary">These are strategic plans to recognise, not extra playable lines added to the trainer. Black can choose other moves in a real game.</p>` },
+    { key: 'F', title: 'Common Mistakes and Tactical Motifs', text: lesson.mistakes.map((mistake) => `<article class="strategy-plan"><h4>${mistake.title}</h4><p><strong>Why it is risky:</strong> ${mistake.risk}</p><p><strong>What to consider instead:</strong> ${mistake.remedy}</p></article>`).join('') },
+    { key: 'G', title: 'Transition to the Middlegame', text: `<p>${analysis.next}</p><h4>Next 2–3 priorities</h4><ol class="strategy-priorities">${analysis.priorities.map((priority) => `<li>${priority}</li>`).join('')}</ol><p><strong>Typical transition:</strong> ${analysis.transitionText}</p><p class="strategy-summary">${lesson.transition.summary}</p>` },
+    { key: 'H', title: 'Key Takeaways', text: `<ul class="strategy-bullets">${lesson.takeaways.principles.map((principle) => `<li>${principle}</li>`).join('')}</ul><p><strong>Questions to ask:</strong> ${lesson.takeaways.questions.join(' • ')}</p><p class="strategy-summary">${lesson.takeaways.summary}</p>` }
+  ];
+  strategySectionObserver?.disconnect();
+  strategyNavResizeObserver?.disconnect();
+  if (strategyLayoutResizeHandler) window.removeEventListener('resize', strategyLayoutResizeHandler);
+  const selectedSection = Math.min(state.strategySection, sections.length - 1);
+  app.innerHTML = `<main class="page-shell strategy-page">${header()}<section class="strategy-shell"><div class="strategy-intro"><button class="back" data-action="library">← Opening library</button><p class="eyebrow">Learn the Strategy</p><h1>${opening.name}</h1><p>${opening.description}</p></div><div class="strategy-actions"><button class="secondary" data-action="library">Return to Opening Library</button><button class="primary" data-action="training" data-opening="${opening.id}">Start Training</button></div><div class="strategy-layout"><aside class="strategy-reference-column" aria-label="Reference chess position"><div class="strategy-depth-picker"><span class="eyebrow">Reference position</span><div class="depth-options compact">${[5, 10].map((depth) => `<button class="depth-option ${state.strategyDepth === depth ? 'selected' : ''}" data-strategy-depth="${depth}" aria-pressed="${state.strategyDepth === depth}">${depth}-Move plan</button>`).join('')}</div></div><div class="strategy-board-heading"><strong>${opening.name}</strong><span>${state.strategyDepth}-move reference · after White’s ${state.strategyDepth}th move</span></div><div id="strategy-board" class="board"></div><aside class="strategy-focus"><p class="eyebrow" id="strategy-current-section">Section ${sections[selectedSection].key} — ${sections[selectedSection].title}</p><h2>${analysis.focusTitle}</h2><p>${analysis.focus}</p><p class="strategy-position-note">The board shows the exact repertoire position at this reference depth.</p>${state.profile === 'daughter' ? kittenSvg('explaining') : ''}</aside></aside><div class="strategy-lesson-column"><nav class="strategy-nav" aria-label="Strategy sections">${sections.map((section, index) => `<button type="button" class="strategy-nav-step ${index === selectedSection ? 'selected' : ''}${index < selectedSection ? 'completed' : ''}" data-strategy-section="${index}" aria-controls="strategy-section-${section.key}" aria-current="${index === selectedSection ? 'step' : 'false'}"><span aria-hidden="true">${section.key}</span><b>${section.title}</b></button>`).join('')}</nav><div class="strategy-sections">${sections.map((section, index) => `<section class="strategy-section${index === selectedSection ? ' selected' : ''}" id="strategy-section-${section.key}" aria-labelledby="strategy-heading-${section.key}"><h3 id="strategy-heading-${section.key}">Section ${section.key} — ${section.title}</h3>${section.text}<div class="strategy-step-controls"><button type="button" class="secondary" data-strategy-section="${Math.max(0, index - 1)}" ${index === 0 ? 'disabled' : ''}>Previous section</button><span>Section ${index + 1} of ${sections.length}</span><button type="button" class="secondary" data-strategy-section="${Math.min(sections.length - 1, index + 1)}" ${index === sections.length - 1 ? 'disabled' : ''}>Next section</button></div></section>`).join('')}</div></div></div></section></main>`;
+  state.board = new ChessBoard(document.querySelector('#strategy-board'), chess, () => 'same', null, () => {}, () => false);
+  state.board.render();
+  const strategyNav = app.querySelector('.strategy-nav');
+  updateStrategyScrollLayout();
+  strategyNavResizeObserver = new ResizeObserver(updateStrategyScrollLayout);
+  strategyNavResizeObserver.observe(strategyNav);
+  strategyLayoutResizeHandler = updateStrategyScrollLayout;
+  window.addEventListener('resize', strategyLayoutResizeHandler);
+  const lessonSections = [...app.querySelectorAll('.strategy-section')];
+  strategySectionObserver = new IntersectionObserver((entries) => {
+    const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+    if (visible) setStrategySection(Number(visible.target.dataset.sectionIndex));
+  }, { rootMargin: '-18% 0px -68% 0px', threshold: [0, 0.1, 0.5] });
+  lessonSections.forEach((section, index) => {
+    section.dataset.sectionIndex = index;
+    strategySectionObserver.observe(section);
+  });
+}
+
+function setStrategySection(index, scroll = false) {
+  const sections = [...app.querySelectorAll('.strategy-section')];
+  if (index < 0 || index >= sections.length) return;
+  state.strategySection = index;
+  sections.forEach((section, sectionIndex) => section.classList.toggle('selected', sectionIndex === index));
+  app.querySelectorAll('.strategy-nav-step').forEach((button) => {
+    const buttonIndex = Number(button.dataset.strategySection);
+    button.classList.toggle('selected', buttonIndex === index);
+    button.classList.toggle('completed', buttonIndex < index);
+    button.setAttribute('aria-current', buttonIndex === index ? 'step' : 'false');
+  });
+  const section = sections[index];
+  const heading = section.querySelector('h3');
+  const focus = app.querySelector('#strategy-current-section');
+  if (heading && focus) focus.textContent = heading.textContent;
+  if (scroll && heading) {
+    updateStrategyScrollLayout();
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    heading.scrollIntoView({ behavior, block: 'start' });
+  }
 }
 
 function modes() {
@@ -172,6 +264,18 @@ function progress() {
   app.innerHTML = `<main class="page-shell">${header()}<section class="progress-heading"><p class="eyebrow">${profileName()}</p><h1>Progress</h1></section><div class="stats-grid"><div><span>Total completions</span><strong>${records.reduce((n, [,r]) => n + r.completions, 0)}</strong></div><div><span>Mastered openings</span><strong>${records.filter(([,r]) => r.mastery).length}</strong></div><div><span>Perfect mastery runs</span><strong>${records.reduce((n,[,r]) => n + r.perfectCompletions, 0)}</strong></div></div><div class="progress-list">${openings.map(o => { const depths = supportedDepths[o.id] ?? [5]; const summaries = depths.map(depth => { const record = data.openings[`${o.id}:${depth}`]; return `<span>${depth} moves: ${record?.mastery ? 'Mastered' : `${record?.streak ?? 0}/3 perfect runs`}</span>`; }).join(''); return `<article><div><strong>${o.name}</strong><span>${summaries || 'Not started'}</span></div></article>`; }).join('')}</div></main>`;
 }
 
+function openStrategy(id) {
+  state.opening = openingById(id);
+  state.view = 'strategy';
+  state.mode = null;
+  state.session = null;
+  state.strategyDepth = 5;
+  state.strategySection = 0;
+  state.teachingOpen = false;
+  state.lessonDisclosure.reset(0);
+  strategyLesson();
+}
+
 function startOpening(id) {
   state.opening = openingById(id);
   state.view = 'modes';
@@ -203,7 +307,9 @@ function startMode(mode) {
 
 document.addEventListener('click', (event) => {
   const profile = event.target.closest('[data-profile]'); if (profile) { state.profile = profile.dataset.profile; state.view = 'library'; library(); return; }
-  const opening = event.target.closest('[data-opening]'); if (opening) { startOpening(opening.dataset.opening); return; }
+  const strategyDepth = event.target.closest('[data-strategy-depth]'); if (strategyDepth) { state.strategyDepth = Number(strategyDepth.dataset.strategyDepth); if (state.view === 'strategy') strategyLesson(); return; }
+  const strategySection = event.target.closest('[data-strategy-section]'); if (strategySection) { setStrategySection(Number(strategySection.dataset.strategySection), true); return; }
+  const opening = event.target.closest('[data-opening]'); if (opening) { if (opening.dataset.action === 'training' || opening.closest('[data-action="training"]')) { startOpening(opening.dataset.opening); return; } if (opening.closest('[data-action="strategy"]')) { openStrategy(opening.dataset.opening); return; } startOpening(opening.dataset.opening); return; }
   const mode = event.target.closest('[data-mode]'); if (mode) { startMode(mode.dataset.mode); return; }
   const depth = event.target.closest('[data-depth]'); if (depth && !depth.disabled && movesForDepth(state.opening, Number(depth.dataset.depth))) { state.depth = Number(depth.dataset.depth); state.session = null; modes(); return; }
   const actionTarget = event.target.closest('[data-action]'); if (!actionTarget) return;
@@ -212,6 +318,8 @@ document.addEventListener('click', (event) => {
     case 'library': state.session = null; state.teachingOpen = false; state.lessonDisclosure.reset(0); library(); break;
     case 'progress': progress(); break;
     case 'modes': modes(); break;
+    case 'training': startOpening(actionTarget.dataset.opening); break;
+    case 'strategy': openStrategy(actionTarget.dataset.strategyOpening ?? actionTarget.dataset.opening); break;
     case 'restart': state.chess.reset(); state.session.restart(); state.busy = false; state.lessonDisclosure.reset(0); state.teachingOpen = false; training(); break;
     case 'deviation-restart': state.busy = false; state.chess.reset(); state.session.restart(); state.lessonDisclosure.reset(0); state.teachingOpen = false; training(); break;
     case 'retry': startMode(state.mode); break;
