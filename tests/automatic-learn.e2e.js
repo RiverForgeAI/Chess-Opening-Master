@@ -305,3 +305,53 @@ test('each family profile retains its own board squares and frame styling', asyn
   expect(new Set(boardThemes.map((theme) => theme.dark)).size).toBe(3);
   expect(new Set(boardThemes.map((theme) => theme.frame)).size).toBe(3);
 });
+
+test('tablet training prioritizes the board in landscape and stacks cleanly in portrait', async ({ page }) => {
+  await startItalian(page, 'learn');
+  await page.setViewportSize({ width: 1024, height: 768 });
+
+  const layout = page.locator('.training-layout');
+  const landscapeGeometry = await layout.evaluate((element) => {
+    const layoutRect = element.getBoundingClientRect();
+    const boardAreaRect = element.querySelector('.board-area').getBoundingClientRect();
+    const coachRect = element.querySelector('.coach-panel').getBoundingClientRect();
+    const boardRect = element.querySelector('#board').getBoundingClientRect();
+    const touchTargets = [...element.querySelectorAll('.coach-actions button')];
+    return {
+      layoutWidth: layoutRect.width,
+      boardAreaWidth: boardAreaRect.width,
+      boardRight: boardAreaRect.right,
+      coachLeft: coachRect.left,
+      coachWidth: coachRect.width,
+      boardWidth: boardRect.width,
+      touchTargetHeights: touchTargets.map((button) => button.getBoundingClientRect().height)
+    };
+  });
+
+  expect(landscapeGeometry.boardRight).toBeLessThanOrEqual(landscapeGeometry.coachLeft);
+  expect(landscapeGeometry.boardAreaWidth / landscapeGeometry.layoutWidth).toBeGreaterThanOrEqual(0.6);
+  expect(landscapeGeometry.coachWidth / landscapeGeometry.layoutWidth).toBeLessThanOrEqual(0.36);
+  expect(landscapeGeometry.boardWidth).toBeGreaterThanOrEqual(530);
+  expect(landscapeGeometry.touchTargetHeights.every((height) => height >= 44)).toBe(true);
+
+  await page.setViewportSize({ width: 834, height: 1112 });
+  const portraitGeometry = await layout.evaluate((element) => {
+    const boardRect = element.querySelector('.board-area').getBoundingClientRect();
+    const coachRect = element.querySelector('.coach-panel').getBoundingClientRect();
+    const boardSize = element.querySelector('#board').getBoundingClientRect().width;
+    return { boardBottom: boardRect.bottom, coachTop: coachRect.top, boardSize };
+  });
+  expect(portraitGeometry.boardBottom).toBeLessThanOrEqual(portraitGeometry.coachTop);
+  expect(portraitGeometry.boardSize).toBeGreaterThanOrEqual(650);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth))
+    .toBeLessThanOrEqual(834);
+
+  await page.goto('/');
+  await page.locator('[data-profile="daughter"]').click();
+  await page.locator('[data-opening="italian"]').click();
+  await page.locator('[data-mode="learn"]').click();
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect(page.locator('#board .board-shell')).toHaveCSS('border-radius', '20px');
+  await expect(page.locator('#board .square.dark').first())
+    .toHaveCSS('background-image', /linear-gradient/);
+});

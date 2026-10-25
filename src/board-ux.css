@@ -345,6 +345,65 @@ body[data-theme="daughter"] .strategy-focus {
   }
 }
 
+@media (min-width: 761px) and (max-width: 1180px) and (orientation: landscape) {
+  .training-layout {
+    grid-template-columns: minmax(0, 1.9fr) minmax(280px, 1fr);
+    gap: clamp(16px, 2vw, 24px);
+  }
+
+  .training-page .board {
+    width: min(100%, 680px, 72dvh);
+  }
+
+  .coach-panel {
+    padding: 16px;
+  }
+
+  .coach-panel h1 {
+    margin-bottom: 6px;
+    font-size: 30px;
+  }
+
+  .progress-dots {
+    gap: 5px;
+    margin: 16px 0;
+  }
+
+  .coach-actions {
+    gap: 6px;
+    margin-top: 16px;
+  }
+
+  .coach-actions button {
+    min-height: 44px;
+  }
+
+  .inline-teaching.expanded {
+    padding-top: 10px;
+  }
+
+  .teaching-card {
+    margin: 6px 0;
+    padding: 8px 10px;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1180px) and (orientation: portrait) {
+  .training-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .training-page .board {
+    width: min(100%, 680px, 68dvh);
+    margin-inline: auto;
+  }
+
+  .coach-panel {
+    padding: 20px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .piece {
     transition: none;
