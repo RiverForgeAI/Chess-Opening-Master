@@ -1,11 +1,9 @@
-export const openings = [
+import repertoire from '../data/openings.json';
+
+const openingDetails = [
   {
-    id: 'italian', name: 'Italian Game', difficulty: 'Beginner',
-    description: 'Develop smoothly, then choose a quiet central plan or a later kingside attack.',
-    objective: 'Central control and rapid development',
+    id: 'italian',
     representative: true,
-    moves: ['e4','e5','Nf3','Nc6','Bc4','Bc5','c3','Nf6','d3'],
-    explanation: 'A classic opening that develops both knights and bishops toward active squares.',
     movesDetail: [
       'e4 stakes a claim in the centre and opens lines for the dark-squared bishop and queen.',
       'Nf3 develops toward the centre and attacks e5, increasing pressure on Black’s central pawn.',
@@ -33,12 +31,8 @@ export const openings = [
     blackDetail: ['Black answers in the centre.', 'Black develops a knight.', 'Black mirrors development.', 'Black develops the knight.', 'This line leaves the position to develop.']
   },
   {
-    id: 'ruy-lopez', name: 'Ruy Lopez (Spanish Opening)', difficulty: 'Intermediate',
-    description: 'Pressure Black’s e5 pawn from the safe and active b5 square.',
-    objective: 'Pressure e5 and develop smoothly',
+    id: 'ruy-lopez',
     representative: true,
-    moves: ['e4','e5','Nf3','Nc6','Bb5','a6','Ba4','Nf6','O-O'],
-    explanation: 'One of chess’s richest openings, combining development with lasting pressure.',
     movesDetail: [
       'e4 claims central space and opens development for the bishop and queen.',
       'Nf3 develops while attacking e5; Black’s knight on c6 currently helps defend that pawn.',
@@ -66,12 +60,8 @@ export const openings = [
     blackDetail: ['Black meets in the centre.', 'Black defends the knight.', 'Black challenges the bishop.', 'Black develops.', 'The reply prepares flexible development.']
   },
   {
-    id: 'scotch', name: 'Scotch Game', difficulty: 'Intermediate',
-    description: 'Open the centre early and create an active development race.',
-    objective: 'Open lines and active piece play',
+    id: 'scotch',
     representative: true,
-    moves: ['e4','e5','Nf3','Nc6','d4','exd4','Nxd4','Nf6','Nc3'],
-    explanation: 'White challenges Black in the centre immediately.',
     movesDetail: [
       'e4 occupies the centre and opens lines for White’s bishops and queen.',
       'Nf3 develops and attacks e5, adding pressure to Black’s central pawn.',
@@ -99,12 +89,8 @@ export const openings = [
     blackDetail: ['Black mirrors the central pawn.', 'Black defends e5.', 'Black exchanges central pawns.', 'Black develops actively.', 'Black prepares the fifth move sequence.']
   },
   {
-    id: 'queens-gambit', name: "Queen's Gambit", difficulty: 'Intermediate',
-    description: 'Challenge d5 with c4 and build central pressure; the offered pawn is usually recoverable.',
-    objective: 'Control the centre and develop harmoniously',
+    id: 'queens-gambit',
     representative: true,
-    moves: ['d4','d5','c4','e6','Nc3','Nf6','Bg5','Be7','e3'],
-    explanation: 'The c4 offer challenges d5; it is not usually a lasting pawn sacrifice because Black cannot safely hold the extra pawn.',
     movesDetail: [
       'd4 occupies the centre and opens lines for the c1-bishop and queen.',
       'c4 challenges d5 and is the Queen’s Gambit offer; Black cannot safely hold the pawn without concessions.',
@@ -132,12 +118,8 @@ export const openings = [
     blackDetail: ['Black challenges the centre.', 'Black chooses a sound closed structure.', 'Black develops.', 'Black protects the king.', 'The position continues peacefully.']
   },
   {
-    id: 'london', name: 'London System', difficulty: 'Beginner',
-    description: 'Build a dependable pawn structure around an early Bf4.',
-    objective: 'Reliable development and kingside safety',
+    id: 'london',
     representativeVariation: 'One representative London System variation',
-    moves: ['d4','d5','Nf3','Nf6','Bf4','e6','e3','Bd6','Bd3'],
-    explanation: 'This chosen line is one representative London System variation, not the only correct London move order.',
     movesDetail: [
       'd4 occupies the centre and opens lines for White’s bishops and queen.',
       'Nf3 develops toward the centre and supports d4.',
@@ -165,12 +147,8 @@ export const openings = [
     blackDetail: ['Black answers in the centre.', 'Black develops actively.', 'Black supports the pawn chain.', 'Black develops the bishop.', 'Black allows the representative line.']
   },
   {
-    id: 'vienna', name: 'Vienna Game', difficulty: 'Intermediate',
-    description: 'Play an active f-pawn while developing the kingside.',
-    objective: 'Flexible central pressure and attacking chances',
+    id: 'vienna',
     representative: true,
-    moves: ['e4','e5','Nc3','Nf6','f4','d5','Nf3','Nc6','Bb5'],
-    explanation: 'The Vienna can lead to active kingside play and sharp central action.',
     movesDetail: [
       'e4 claims the centre and opens lines for White’s bishops and queen.',
       'Nc3 develops the queen knight and supports e4.',
@@ -198,12 +176,8 @@ export const openings = [
     blackDetail: ['Black answers centrally.', 'Black develops.', 'Black challenges f4.', 'Black develops.', 'The line enters a central battle.']
   },
   {
-    id: 'english', name: 'English Opening', difficulty: 'Intermediate',
-    description: 'Prepare the centre from the flank with a flexible setup.',
-    objective: 'Space, control of d4, and flexible development',
+    id: 'english',
     representativeVariation: 'One representative English Opening variation',
-    moves: ['c4','e5','Nc3','Nf6','g3','d5','Bg2','Be6','Nf3'],
-    explanation: 'A flexible flank opening; this sequence is one representative English variation.',
     movesDetail: [
       'c4 controls d5 from the flank and leaves White’s central pawns flexible.',
       'Nc3 develops and supports central squares while maintaining the English setup.',
@@ -231,12 +205,8 @@ export const openings = [
     blackDetail: ['Black claims e5.', 'Black develops.', 'Black challenges the centre.', 'Black develops the bishop.', 'Black closes the representative line.']
   },
   {
-    id: 'king-indian-attack', name: "King's Indian Attack", difficulty: 'Intermediate',
-    description: 'Build a flexible kingside setup that can meet many defences.',
-    objective: 'Flexible development and kingside space',
+    id: 'king-indian-attack',
     representativeVariation: 'One representative King’s Indian Attack move order',
-    moves: ['Nf3','d5','g3','Nf6','Bg2','e6','O-O','Be7','d3'],
-    explanation: 'This is one representative move order; the King’s Indian Attack can transpose from several systems.',
     movesDetail: [
       'Nf3 develops toward the centre and keeps White’s setup flexible; this move alone does not define the KIA.',
       'g3 prepares a kingside fianchetto while Black occupies the centre with ...d5.',
@@ -264,6 +234,12 @@ export const openings = [
     blackDetail: ['Black challenges the centre.', 'Black develops.', 'Black supports development.', 'Black develops the bishop.', 'Black closes this representative line.']
   }
 ];
+
+export const openings = repertoire.map((opening) => ({
+  ...openingDetails.find((details) => details.id === opening.id),
+  ...opening,
+  moves: opening.moves['5']
+}));
 
 export const openingById = (id) => openings.find((opening) => opening.id === id);
 

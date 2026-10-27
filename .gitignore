@@ -5,6 +5,12 @@ dist/
 test-results/
 playwright-report/
 
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
 .env
 .env.*
 !.env.example
