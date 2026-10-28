@@ -20,6 +20,18 @@ A browser-based chess opening trainer for Dad, Son, and Daughter profiles. It te
 - Vite for development and GitHub Pages builds
 - chess.js 1.4.0 for rules and move validation
 - Vitest for unit and state tests
+- FastAPI, Pydantic, and python-chess for the stateless Python validation API
+
+## Python API
+
+Run the backend from `backend/` after installing its requirements:
+
+```bash
+python -m pip install -r requirements.txt
+uvicorn main:app --reload
+```
+
+`POST /validate-move` accepts `opening_id`, `depth` (`5` or `10`), `history` (previous SAN moves), and `move` (the proposed SAN move). It returns `outcome: "correct"` for a legal repertoire move, `"off_repertoire"` for a legal deviation, or `"illegal"` for an invalid chess move. Legal outcomes include the resulting FEN. Invalid IDs, malformed requests, unsupported depths, inconsistent histories, and completed lines return structured errors. The API does not store sessions, advance Black automatically, or change frontend session state.
 
 ## Install and preview
 
@@ -93,7 +105,7 @@ Vite is configured with a relative base path. Build the site with `npm run build
 
 ## Known limitations
 
-- This is a local-device Phase 1 application; accounts, cloud sync, Python, and Supabase are not included.
+- This remains a local-device application; accounts, cloud sync, and Supabase are not included.
 - Stockfish and full game play are not included; Black is limited to curated repertoire replies.
 - Board interaction currently uses tap selection and tap destination.
 - Only five- and ten-move depths are implemented. Fifteen- and twenty-move options are intentionally disabled.
