@@ -1,13 +1,38 @@
 import json
+import os
 from pathlib import Path
 
 import chess
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+DEFAULT_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+]
+
+raw_allowed_origins = os.getenv("CORS_ALLOWED_ORIGINS", "")
+allowed_origins = [
+    origin.strip()
+    for origin in raw_allowed_origins.split(",")
+    if origin.strip()
+]
+if not allowed_origins:
+    allowed_origins = DEFAULT_ALLOWED_ORIGINS
+
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "Accept", "X-Requested-With"],
+)
 DATA_FILE = Path(__file__).resolve().parent.parent / "data" / "openings.json"
 OPENINGS = json.loads(DATA_FILE.read_text(encoding="utf-8"))
 OPENINGS_BY_ID = {opening["id"]: opening for opening in OPENINGS}

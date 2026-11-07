@@ -33,6 +33,35 @@ uvicorn main:app --reload
 
 `POST /validate-move` accepts `opening_id`, `depth` (`5` or `10`), `history` (previous SAN moves), and `move` (the proposed SAN move). It returns `outcome: "correct"` for a legal repertoire move, `"off_repertoire"` for a legal deviation, or `"illegal"` for an invalid chess move. Legal outcomes include the resulting FEN. Invalid IDs, malformed requests, unsupported depths, inconsistent histories, and completed lines return structured errors. The API does not store sessions, advance Black automatically, or change frontend session state.
 
+## Development-only Python API mode
+
+Create a local file named `.env` in the project root (this is ignored by Git) with the following values:
+
+```env
+VITE_USE_PYTHON_API=true
+VITE_API_BASE_URL=
+```
+
+When `VITE_USE_PYTHON_API=true` in development, the browser calls same-origin `/api/*` routes and the Vite dev server proxies them to `http://127.0.0.1:8000` without exposing the backend port directly in the browser. Production builds ignore these values and keep the existing JavaScript-only training engine. Do not store secrets, tokens, or passwords in Vite environment variables.
+
+For normal JavaScript-only development, keep `VITE_USE_PYTHON_API=false` and let the app fall back to the built-in local chess logic. A safe reference file is included at `.env.example`.
+
+## CORS and Codespaces
+
+The FastAPI backend reads `CORS_ALLOWED_ORIGINS` from the environment as a comma-separated list, for example:
+
+```bash
+export CORS_ALLOWED_ORIGINS="http://localhost:5173,http://127.0.0.1:5173,https://YOUR-CODESPACE-5173.app.github.dev,https://YOUR-CODESPACE-8000.app.github.dev"
+```
+
+This keeps CORS explicit and locked to local development plus the forwarded GitHub Codespaces URLs instead of allowing any website to call the API. The backend uses `allow_credentials=False`, and only `GET`, `POST`, and preflight `OPTIONS` are allowed.
+
+## Fetch, JSON, and async programming
+
+`fetch()` is JavaScript's browser API for making HTTP requests. It is the JavaScript equivalent of "ask another service for data". When the frontend sends JSON, it converts a JavaScript object into a string with `JSON.stringify()` and sends it as the request body; Python receives it as structured data and responds with JSON. `async`/`await` lets the UI keep running while the browser waits for a response, which is important because network calls can take a little time.
+
+The app must handle network failures and timeouts gracefully. A request may fail because the backend is offline, the preview URL changed, or the response is malformed. The JavaScript engine remains the fallback so the training experience continues even if Python is unavailable.
+
 ## Install and preview
 
 ```bash
@@ -40,7 +69,27 @@ npm install
 npm run dev
 ```
 
-Vite prints the local preview URL. Codespaces may expose the port automatically; open the forwarded HTTP port in your browser.
+Vite prints the local preview URL. Codespaces may expose the port automatically; open the forwarded HTTP port in your browser. To run the app with the Python API, start both servers at the same time:
+
+```bash
+# Terminal 1: frontend
+npm run dev -- --host 0.0.0.0 --port 5173
+
+# Terminal 2: backend
+cd backend
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+The frontend should use same-origin `/api/*` calls in development, with the Vite proxy forwarding them to `http://127.0.0.1:8000` automatically. No direct Codespaces port URL is required in the browser.
+
+### Manual real-backend test in Codespaces
+
+1. In a Codespace, start the backend on port 8000.
+2. In `/.env`, set `VITE_USE_PYTHON_API=true` and leave `VITE_API_BASE_URL=` blank so the Vite proxy handles the request.
+3. Start Vite with `npm run dev -- --host 0.0.0.0 --port 5173`.
+4. Open the forwarded frontend preview URL for port 5173.
+5. Select an opening and mode, then play `e4` and `Nf3` to confirm the backend replies with `e5` and `Nc6`.
+6. Confirm the toolbar shows `Python API` while the session is active and `Local Chess` only after an API failure.
 
 For the production build:
 
@@ -48,6 +97,8 @@ For the production build:
 npm run build
 npm run preview
 ```
+
+The frontend uses the same-origin `/api/*` path in development, so the browser stays on the 5173 origin. The Vite proxy rewrites requests like `/api/training/start` to `http://127.0.0.1:8000/training/start` internally. This avoids the CORS issue caused by calling the forwarded Codespaces port directly from the browser. In production, the API switch stays off and the frontend never uses the Python backend.
 
 ## Tests
 

@@ -13,9 +13,10 @@ import { loadProgress, recordCompletion, recordMistake, loadTheme } from './stor
 import { movesForDepth, supportedDepths } from './openingDepths.js';
 import { teachingFor } from './teaching.js';
 import { strategyAnalysisFor } from './strategy-analysis.js';
+import { isPythonApiEnabled, startTrainingSession, submitTrainingMove } from './api.js';
 
 const app = document.querySelector('#app');
-let state = { profile: null, view: 'welcome', opening: null, mode: null, depth: 5, strategyDepth: 5, strategySection: 0, session: null, board: null, chess: new Chess(), busy: false, assisted: false, teachingOpen: false, lessonDisclosure: new LessonDisclosure() };
+let state = { profile: null, view: 'welcome', opening: null, mode: null, depth: 5, strategyDepth: 5, strategySection: 0, session: null, board: null, chess: new Chess(), busy: false, assisted: false, teachingOpen: false, apiBusy: false, apiRequestId: 0, apiHistory: [], apiFallbackUsed: false, apiSessionReady: false, apiModeEnabled: isPythonApiEnabled(), lessonDisclosure: new LessonDisclosure() };
 let strategySectionObserver = null;
 let strategyNavResizeObserver = null;
 let strategyLayoutResizeHandler = null;
@@ -35,6 +36,25 @@ function expectedSquare(san) {
 }
 function profileName(id = state.profile) { return profiles[id]?.title ?? ''; }
 function openingName() { return state.opening?.name ?? ''; }
+
+function boardFromHistory(history = []) {
+  const board = new Chess();
+  for (const san of history) {
+    try {
+      if (!board.move(san)) break;
+    } catch {
+      break;
+    }
+  }
+  return board;
+}
+
+function syncSessionToHistory(history = []) {
+  if (!state.session) return;
+  state.session.whiteMove = Math.min(Math.max(0, Math.floor((history.length ?? 0) / 2)), state.depth);
+  state.session.finished = false;
+  state.session.failed = false;
+}
 
 function updateStrategyScrollLayout() {
   const strategyPage = app.querySelector('.strategy-page');
@@ -168,18 +188,25 @@ function explanationFor(moveIndex) {
 
 function training() {
   document.body.dataset.theme = state.profile;
+  state.apiModeEnabled = isPythonApiEnabled();
   const sequence = movesForDepth(state.opening, state.depth);
   state.session = state.session ?? new TrainingSession(state.opening, state.mode, state.chess, state.depth, sequence);
-  app.innerHTML = `<main class="training-page page-shell">${header()}<div class="training-layout"><section class="board-area"><div class="board-toolbar"><button class="back" data-action="modes">← Modes</button><span>${state.mode[0].toUpperCase()+state.mode.slice(1)} · ${state.depth} moves · Move <strong id="move-count">${Math.min(state.session.whiteMove + 1, state.depth)}</strong> of ${state.depth}</span></div><div id="board" class="board"></div></section><aside class="coach-panel"><p class="eyebrow">${state.opening.name}</p>${state.profile === 'daughter' ? '<div class="tiny-kitten">•ᴗ•</div>' : ''}<h1 id="coach-title">Your move, White</h1><div class="progress-dots">${Array.from({length: state.depth}, (_, i) => `<span class="${i < state.session.whiteMove ? 'done' : i === state.session.whiteMove ? 'current' : ''}"></span>`).join('')}</div><p id="feedback">${state.mode === 'learn' ? explanationFor(state.session.whiteMove) : 'Find the next move from memory.'}</p><div class="coach-actions"><button class="secondary" data-action="hint">Hint</button><button class="secondary" id="why-button" data-action="why" aria-expanded="${state.teachingOpen}">Show me why</button><button class="text-button danger" data-action="restart">Restart</button></div><section id="teaching-panel" class="inline-teaching ${state.teachingOpen ? 'expanded' : ''}" aria-live="polite"></section><div class="legend"><span><i class="green"></i>Recommended</span><span><i class="orange"></i>Important square</span></div></aside></div></main>`;
+  state.session.sequence = sequence;
+  state.session.chess = state.chess;
+  const pythonStatus = state.apiModeEnabled ? (state.apiFallbackUsed ? 'Local Chess' : 'Python API') : '';
+  app.innerHTML = `<main class="training-page page-shell">${header()}<div class="training-layout"><section class="board-area"><div class="board-toolbar"><button class="back" data-action="modes">← Modes</button><span>${state.mode[0].toUpperCase()+state.mode.slice(1)} · ${state.depth} moves · Move <strong id="move-count">${Math.min(state.session.whiteMove + 1, state.depth)}</strong> of ${state.depth}</span>${pythonStatus ? `<span class="api-indicator">${pythonStatus}</span>` : ''}</div><div id="board" class="board"></div></section><aside class="coach-panel"><p class="eyebrow">${state.opening.name}</p>${state.profile === 'daughter' ? '<div class="tiny-kitten">•ᴗ•</div>' : ''}<h1 id="coach-title">Your move, White</h1><div class="progress-dots">${Array.from({length: state.depth}, (_, i) => `<span class="${i < state.session.whiteMove ? 'done' : i === state.session.whiteMove ? 'current' : ''}"></span>`).join('')}</div><p id="feedback">${state.mode === 'learn' ? explanationFor(state.session.whiteMove) : 'Find the next move from memory.'}</p><div class="coach-actions"><button class="secondary" data-action="hint">Hint</button><button class="secondary" id="why-button" data-action="why" aria-expanded="${state.teachingOpen}">Show me why</button><button class="text-button danger" data-action="restart">Restart</button></div><section id="teaching-panel" class="inline-teaching ${state.teachingOpen ? 'expanded' : ''}" aria-live="polite"></section><div class="legend"><span><i class="green"></i>Recommended</span><span><i class="orange"></i>Important square</span></div></aside></div></main>`;
   state.board = new ChessBoard(
     document.querySelector('#board'),
     state.chess,
     handleMove,
     recommendedMoveForMode(state.mode, expectedSquare(state.session.expectedMove)),
     handleSelectionChange,
-    () => !state.busy
+    () => !state.busy && !state.apiBusy
   );
   state.board.render();
+  if (state.apiModeEnabled) {
+    queueMicrotask(() => startPythonTrainingSession());
+  }
 }
 
 function clearTeachingPanel() {
@@ -197,6 +224,53 @@ function clearMoveFeedback() {
     : 'Find the next move from memory.';
 }
 
+async function startPythonTrainingSession() {
+  if (!state.apiModeEnabled || !state.opening || !state.mode || state.apiSessionReady) return false;
+  const requestId = ++state.apiRequestId;
+  state.apiBusy = true;
+  state.apiHistory = [];
+  try {
+    const result = await startTrainingSession(state.opening.id, state.depth);
+    if (requestId !== state.apiRequestId) return false;
+    state.apiBusy = false;
+    if (!result.ok) {
+      state.apiFallbackUsed = true;
+      state.chess = new Chess();
+      state.session = new TrainingSession(state.opening, state.mode, state.chess, state.depth, movesForDepth(state.opening, state.depth));
+      state.session.whiteMove = 0;
+      if (state.board) {
+        state.board.chess = state.chess;
+        state.board.render();
+      }
+      const feedback = document.querySelector('#feedback');
+      if (feedback) feedback.textContent = 'Local chess mode is active. Python API unavailable.';
+      return false;
+    }
+    state.apiFallbackUsed = false;
+    state.apiSessionReady = true;
+    state.apiHistory = [...result.payload.history];
+    state.chess = new Chess(result.payload.fen);
+    state.session = new TrainingSession(state.opening, state.mode, state.chess, state.depth, movesForDepth(state.opening, state.depth));
+    syncSessionToHistory(state.apiHistory);
+    if (state.board) {
+      state.board.chess = state.chess;
+      state.board.render();
+    }
+    return true;
+  } catch {
+    state.apiBusy = false;
+    state.apiFallbackUsed = true;
+    state.apiSessionReady = true;
+    state.chess = new Chess();
+    state.session = new TrainingSession(state.opening, state.mode, state.chess, state.depth, movesForDepth(state.opening, state.depth));
+    if (state.board) {
+      state.board.chess = state.chess;
+      state.board.render();
+    }
+    return false;
+  }
+}
+
 function handleSelectionChange(selectedSquare) {
   clearMoveFeedback();
   state.board?.clearOverlay();
@@ -210,11 +284,7 @@ function handleSelectionChange(selectedSquare) {
   }
 }
 
-function handleMove(from, to) {
-  if (state.busy || state.session.finished) return 'same';
-  const piece = state.chess.get(from);
-  if (!piece || piece.color !== 'w') return 'same';
-  const result = state.session.playWhite(from, to);
+function applyLocalMoveResult(result) {
   if (result.type === 'illegal') {
     document.querySelector('#feedback').textContent = 'That move is not legal. Try another move.';
     return 'same';
@@ -246,6 +316,79 @@ function handleMove(from, to) {
   return true;
 }
 
+async function handleApiMove(from, to) {
+  if (state.apiBusy || state.session.finished) return 'same';
+  const piece = state.chess.get(from);
+  if (!piece || piece.color !== 'w') return 'same';
+  const preview = new Chess(state.chess.fen());
+  const previewMove = preview.move({ from, to, promotion: 'q' });
+  if (!previewMove) {
+    document.querySelector('#feedback').textContent = 'That move is not legal. Try another move.';
+    return 'same';
+  }
+  const requestId = ++state.apiRequestId;
+  state.apiBusy = true;
+  const history = [...state.apiHistory];
+  const response = await submitTrainingMove({
+    openingId: state.opening.id,
+    depth: state.depth,
+    history,
+    move: previewMove.san,
+  });
+
+  if (requestId !== state.apiRequestId) return 'same';
+  state.apiBusy = false;
+  if (!response.ok) {
+    state.apiFallbackUsed = true;
+    state.chess = boardFromHistory(history);
+    state.session = new TrainingSession(state.opening, state.mode, state.chess, state.depth, movesForDepth(state.opening, state.depth));
+    syncSessionToHistory(history);
+    const result = state.session.playWhite(from, to);
+    state.board.chess = state.chess;
+    if (result.type === 'illegal') {
+      document.querySelector('#feedback').textContent = 'Local chess mode is active. Python API unavailable.';
+      return 'same';
+    }
+    state.chess = state.session.chess;
+    state.board.chess = state.chess;
+    state.apiHistory = [...history];
+    return applyLocalMoveResult(result);
+  }
+
+  state.apiHistory = response.payload.history;
+  state.chess = new Chess(response.payload.fen);
+  state.session = new TrainingSession(state.opening, state.mode, state.chess, state.depth, movesForDepth(state.opening, state.depth));
+  syncSessionToHistory(response.payload.history);
+  state.board.chess = state.chess;
+  state.board.render();
+  if (response.payload.status === 'restarted') {
+    document.querySelector('#feedback').textContent = 'This move is legal but outside the selected opening. The attempt restarts.';
+    training();
+    return true;
+  }
+  if (response.payload.status === 'completed') {
+    complete();
+    return true;
+  }
+  if (response.payload.black_reply) {
+    document.querySelector('#feedback').textContent = state.profile === 'daughter' ? 'Purrfect choice! Black is thinking…' : 'Correct. Black is replying now.';
+    training();
+  }
+  return true;
+}
+
+function handleMove(from, to) {
+  if (state.busy || state.session.finished) return 'same';
+  if (state.apiModeEnabled) {
+    handleApiMove(from, to);
+    return 'same';
+  }
+  const piece = state.chess.get(from);
+  if (!piece || piece.color !== 'w') return 'same';
+  const result = state.session.playWhite(from, to);
+  return applyLocalMoveResult(result);
+}
+
 function showDeviation(attempted, expected) {
   const squares = expectedSquare(expected);
   if (squares) state.board.setOverlay(squares.from, squares.to, 'Recommended');
@@ -269,6 +412,8 @@ function openStrategy(id) {
   state.view = 'strategy';
   state.mode = null;
   state.session = null;
+  state.apiHistory = [];
+  state.apiSessionReady = false;
   state.strategyDepth = 5;
   state.strategySection = 0;
   state.teachingOpen = false;
@@ -280,6 +425,8 @@ function startOpening(id) {
   state.opening = openingById(id);
   state.view = 'modes';
   state.session = null;
+  state.apiHistory = [];
+  state.apiSessionReady = false;
   state.teachingOpen = false;
   state.lessonDisclosure.reset(0);
   modes();
@@ -298,7 +445,7 @@ function showTeaching() {
 }
 
 function startMode(mode) {
-  state.mode = mode; state.chess = new Chess(); state.session = null; state.busy = false; state.assisted = false;
+  state.mode = mode; state.chess = new Chess(); state.session = null; state.busy = false; state.assisted = false; state.apiBusy = false; state.apiHistory = []; state.apiSessionReady = false; state.apiFallbackUsed = false;
   state.teachingOpen = false;
   state.lessonDisclosure.reset(0);
   if (!movesForDepth(state.opening, state.depth)) { state.depth = 5; }
